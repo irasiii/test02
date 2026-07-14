@@ -16,8 +16,9 @@ final historyStreamProvider = FutureProvider.family<List<Map<String, dynamic>>, 
       final list = (orders).map((e) => Map<String, dynamic>.from(e as Map)).toList();
       return list;
     case HistoryType.deliveries:
-      // Driver's perspective: list orders assigned to them
-      final orders = await api.myOrders();
+      // Driver's perspective: list orders assigned to them (not the
+      // customer-only /orders/me endpoint).
+      final orders = await api.driverDeliveries();
       return orders.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 });

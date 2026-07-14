@@ -29,6 +29,7 @@ describe('OrdersService', () => {
     id: 'rest-1',
     name: 'Burgers',
     email: 'burgers@geny.app',
+    ownerId: 'owner-user-1',
     status: RestaurantStatus.OPEN,
     minimumOrder: 10,
     deliveryFee: 2,
@@ -105,6 +106,18 @@ describe('OrdersService', () => {
       await expect(service.create('cust-1', validDto())).rejects.toThrow(/minimum order/i);
     });
 
+    it('throws when item is unavailable', async () => {
+      restaurantsRepo.findOne.mockResolvedValue(restaurant());
+      itemsRepo.find.mockResolvedValue([{ id: 'm1', price: 15, isAvailable: false, restaurantId: 'rest-1' }]);
+      await expect(service.create('cust-1', validDto())).rejects.toThrow(/unavailable/i);
+    });
+
+    it('throws when item is from wrong restaurant', async () => {
+      restaurantsRepo.findOne.mockResolvedValue(restaurant());
+      itemsRepo.find.mockResolvedValue([{ id: 'm1', price: 15, isAvailable: true, restaurantId: 'rest-other' }]);
+      await expect(service.create('cust-1', validDto())).rejects.toThrow(/unavailable/i);
+    });
+
     it('computes totals: subtotal + delivery + service fee + tax', async () => {
       restaurantsRepo.findOne.mockResolvedValue(restaurant());
       itemsRepo.find.mockResolvedValue([{ id: 'm1', price: 12, isAvailable: true, restaurantId: 'rest-1' }]);
@@ -119,27 +132,176 @@ describe('OrdersService', () => {
       expect(order.total).toBeCloseTo(12 + 2.6 + 0.6 + 0.6, 2);
       expect(dataSource.transaction).toHaveBeenCalled();
     });
+
+    it('handles multiple items in one order', async () => {
+      restaurantsRepo.findOne.mockResolvedValue(restaurant());
+      itemsRepo.find.mockResolvedValue([
+        { id: 'm1', price: 10, isAvailable: true, restaurantId: 'rest-1' },
+        { id: 'm2', price: 8, isAvailable: true, restaurantId: 'rest-1' },
+      ]);
+      maps.distanceMatrix.mockResolvedValue({ distanceMeters: 1000, durationSeconds: 180 });
+
+      const dto = {
+        ...validDto(),
+        items: [
+          { menuItemId: 'm1', quantity: 2 },
+          { menuItemId: 'm2', quantity: 1 },
+        ],
+      };
+      const order = await service.create('cust-1', dto);
+      expect(order.subtotal).toBe(28); // 10*2 + 8*1
+    });
   });
 
   describe('updateStatus', () => {
-    it('only lets the customer cancel', async () => {
+    it('only lets the customer or admin cancel', async () => {
       ordersRepo.findOne.mockResolvedValue({
         id: 'o1',
         customerId: 'cust-1',
-        restaurant: { email: 'r@x' },
+        restaurant: { email: 'r@x', ownerId: 'owner-1' },
         driverId: null,
         status: OrderStatus.PENDING,
       });
       await expect(
         service.updateStatus('stranger', 'o1', { status: OrderStatus.CANCELLED } as any),
-      ).rejects.toThrow(/Only customer/);
+      ).rejects.toThrow(/Only customer or admin can cancel/);
+    });
+
+    it('allows admin to cancel', async () => {
+      ordersRepo.findOne.mockResolvedValue({
+        id: 'o1',
+        customerId: 'cust-1',
+        restaurant: { email: 'r@x', ownerId: 'owner-1' },
+        driverId: null,
+        status: OrderStatus.PENDING,
+      });
+      const cancelled = await service.updateStatus('admin-1', 'o1', { status: OrderStatus.CANCELLED } as any, true);
+      expect(cancelled.status).toBe(OrderStatus.CANCELLED);
+    });
+
+    it('throws when cancelling an in-progress order', async () => {
+      ordersRepo.findOne.mockResolvedValue({
+        id: 'o1',
+        customerId: 'cust-1',
+        restaurant: { email: 'r@x', ownerId: 'owner-1' },
+        driverId: null,
+        status: OrderStatus.PICKED_UP,
+      });
+      await expect(
+        service.updateStatus('cust-1', 'o1', { status: OrderStatus.CANCELLED } as any),
+      ).rejects.toThrow(/in-progress/i);
+    });
+
+    it('restaurant can accept an order', async () => {
+      ordersRepo.findOne.mockResolvedValue({
+        id: 'o1',
+        customerId: 'cust-1',
+        restaurant: { email: 'r@x', ownerId: 'owner-1' },
+        driverId: null,
+        status: OrderStatus.PENDING,
+      });
+      const accepted = await service.updateStatus('owner-1', 'o1', { status: OrderStatus.ACCEPTED } as any);
+      expect(accepted.status).toBe(OrderStatus.ACCEPTED);
+      expect(accepted.acceptedAt).toBeDefined();
+    });
+
+    it('restaurant can set PREPARING status', async () => {
+      ordersRepo.findOne.mockResolvedValue({
+        id: 'o1',
+        customerId: 'cust-1',
+        restaurant: { email: 'r@x', ownerId: 'owner-1' },
+        driverId: null,
+        status: OrderStatus.ACCEPTED,
+      });
+      const result = await service.updateStatus('owner-1', 'o1', { status: OrderStatus.PREPARING } as any);
+      expect(result.status).toBe(OrderStatus.PREPARING);
+    });
+
+    it('restaurant can set READY status', async () => {
+      ordersRepo.findOne.mockResolvedValue({
+        id: 'o1',
+        customerId: 'cust-1',
+        restaurant: { email: 'r@x', ownerId: 'owner-1' },
+        driverId: null,
+        status: OrderStatus.PREPARING,
+      });
+      redis.nearby.mockResolvedValue([]);
+      const result = await service.updateStatus('owner-1', 'o1', { status: OrderStatus.READY } as any);
+      expect(result.status).toBe(OrderStatus.READY);
+      expect(result.preparedAt).toBeDefined();
+    });
+
+    it('restaurant can REJECT an order', async () => {
+      ordersRepo.findOne.mockResolvedValue({
+        id: 'o1',
+        customerId: 'cust-1',
+        restaurant: { email: 'r@x', ownerId: 'owner-1' },
+        driverId: null,
+        status: OrderStatus.PENDING,
+      });
+      const result = await service.updateStatus('owner-1', 'o1', { status: OrderStatus.REJECTED } as any);
+      expect(result.status).toBe(OrderStatus.REJECTED);
+    });
+
+    it('non-restaurant actor cannot set restaurant statuses', async () => {
+      ordersRepo.findOne.mockResolvedValue({
+        id: 'o1',
+        customerId: 'cust-1',
+        restaurant: { email: 'r@x', ownerId: 'owner-1' },
+        driverId: null,
+        status: OrderStatus.PENDING,
+      });
+      await expect(
+        service.updateStatus('stranger', 'o1', { status: OrderStatus.ACCEPTED } as any),
+      ).rejects.toThrow(/Only restaurant/i);
+    });
+
+    it('driver can set PICKED_UP status', async () => {
+      ordersRepo.findOne.mockResolvedValue({
+        id: 'o1',
+        customerId: 'cust-1',
+        restaurant: { email: 'r@x', ownerId: 'owner-1' },
+        driverId: 'drv-1',
+        status: OrderStatus.READY,
+      });
+      driversRepo.findOne.mockResolvedValue({ id: 'drv-1', userId: 'drv-user-1' });
+      const result = await service.updateStatus('drv-user-1', 'o1', { status: OrderStatus.PICKED_UP } as any);
+      expect(result.status).toBe(OrderStatus.PICKED_UP);
+      expect(result.pickedUpAt).toBeDefined();
+    });
+
+    it('driver can set ON_THE_WAY status', async () => {
+      ordersRepo.findOne.mockResolvedValue({
+        id: 'o1',
+        customerId: 'cust-1',
+        restaurant: { email: 'r@x', ownerId: 'owner-1' },
+        driverId: 'drv-1',
+        status: OrderStatus.PICKED_UP,
+      });
+      driversRepo.findOne.mockResolvedValue({ id: 'drv-1', userId: 'drv-user-1' });
+      const result = await service.updateStatus('drv-user-1', 'o1', { status: OrderStatus.ON_THE_WAY } as any);
+      expect(result.status).toBe(OrderStatus.ON_THE_WAY);
+    });
+
+    it('non-driver cannot set driver statuses', async () => {
+      ordersRepo.findOne.mockResolvedValue({
+        id: 'o1',
+        customerId: 'cust-1',
+        restaurant: { email: 'r@x', ownerId: 'owner-1' },
+        driverId: 'drv-1',
+        status: OrderStatus.READY,
+      });
+      driversRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.updateStatus('stranger', 'o1', { status: OrderStatus.PICKED_UP } as any),
+      ).rejects.toThrow(/Only the assigned driver/i);
     });
 
     it('on DELIVERED resets the driver and increments deliveries', async () => {
       ordersRepo.findOne.mockResolvedValue({
         id: 'o1',
         customerId: 'c',
-        restaurant: { email: 'r@x' },
+        restaurant: { email: 'r@x', ownerId: 'owner-1' },
         driverId: 'drv-1',
         status: OrderStatus.ON_THE_WAY,
       });
@@ -153,6 +315,19 @@ describe('OrdersService', () => {
       expect(driversRepo.increment).toHaveBeenCalledWith({ id: 'drv-1' }, 'totalDeliveries', 1);
       expect(driversRepo.update).toHaveBeenCalledWith('drv-1', { status: DriverStatus.ONLINE });
     });
+
+    it('throws on invalid status transition', async () => {
+      ordersRepo.findOne.mockResolvedValue({
+        id: 'o1',
+        customerId: 'cust-1',
+        restaurant: { email: 'r@x', ownerId: 'owner-1' },
+        driverId: null,
+        status: OrderStatus.DELIVERED,
+      });
+      await expect(
+        service.updateStatus('cust-1', 'o1', { status: 'INVALID_STATUS' } as any),
+      ).rejects.toThrow(/Invalid status transition/i);
+    });
   });
 
   describe('listAll (admin)', () => {
@@ -161,6 +336,67 @@ describe('OrdersService', () => {
       const res = await service.listAll();
       expect(res.length).toBe(2);
       expect(ordersRepo.find).toHaveBeenCalledWith(expect.objectContaining({ take: 100 }));
+    });
+  });
+
+  describe('listMine', () => {
+    it('returns orders for a customer', async () => {
+      ordersRepo.find.mockResolvedValue([{ id: 'o1' }]);
+      const res = await service.listMine('cust-1');
+      expect(res.length).toBe(1);
+      expect(ordersRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { customerId: 'cust-1' } }),
+      );
+    });
+  });
+
+  describe('listForRestaurant', () => {
+    it('returns orders for a restaurant', async () => {
+      ordersRepo.find.mockResolvedValue([{ id: 'o1' }]);
+      const res = await service.listForRestaurant('rest-1');
+      expect(res.length).toBe(1);
+    });
+
+    it('throws when actor does not own the restaurant', async () => {
+      restaurantsRepo.findOne.mockResolvedValue({ id: 'rest-1', ownerId: 'owner-1' });
+      await expect(
+        service.listForRestaurant('rest-1', { id: 'stranger', isAdmin: false }),
+      ).rejects.toThrow(/do not own/i);
+    });
+
+    it('allows admin to list any restaurant orders', async () => {
+      restaurantsRepo.findOne.mockResolvedValue({ id: 'rest-1', ownerId: 'owner-1' });
+      ordersRepo.find.mockResolvedValue([]);
+      const res = await service.listForRestaurant('rest-1', { id: 'admin-1', isAdmin: true });
+      expect(res).toEqual([]);
+    });
+  });
+
+  describe('findOne', () => {
+    it('throws NotFoundException when order not found', async () => {
+      ordersRepo.findOne.mockResolvedValue(null);
+      await expect(service.findOne('nonexistent')).rejects.toThrow(/not found/i);
+    });
+
+    it('returns the order', async () => {
+      ordersRepo.findOne.mockResolvedValue({ id: 'o1', total: 25 });
+      const res = await service.findOne('o1');
+      expect(res.id).toBe('o1');
+    });
+  });
+
+  describe('listForDriver', () => {
+    it('returns empty array when driver profile not found', async () => {
+      driversRepo.findOne.mockResolvedValue(null);
+      const res = await service.listForDriver('nonexistent');
+      expect(res).toEqual([]);
+    });
+
+    it('returns orders for the driver', async () => {
+      driversRepo.findOne.mockResolvedValue({ id: 'drv-1' });
+      ordersRepo.find.mockResolvedValue([{ id: 'o1' }]);
+      const res = await service.listForDriver('drv-user-1');
+      expect(res.length).toBe(1);
     });
   });
 });

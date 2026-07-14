@@ -52,7 +52,7 @@ describe('TripsService', () => {
   beforeEach(async () => {
     tripsRepo = {
       create: jest.fn((x) => ({ ...x })),
-      save: jest.fn(async (x) => ({ ...x })),
+      save: jest.fn(async (x) => x),
       find: jest.fn(),
       findOne: jest.fn(),
       update: jest.fn(),
@@ -123,6 +123,17 @@ describe('TripsService', () => {
       await expect(service.acceptTrip('drv-user-1', 'trip-1')).rejects.toThrow(/approved/i);
     });
 
+    it('throws when the driver is not ONLINE', async () => {
+      driversRepo.findOne.mockResolvedValue(driver({ status: DriverStatus.OFFLINE }));
+      await expect(service.acceptTrip('drv-user-1', 'trip-1')).rejects.toThrow(/ONLINE/i);
+    });
+
+    it('throws when the trip is already ACCEPTED', async () => {
+      driversRepo.findOne.mockResolvedValue(driver());
+      tripsRepo.findOne.mockResolvedValue(trip({ status: TripStatus.ACCEPTED }));
+      await expect(service.acceptTrip('drv-user-1', 'trip-1')).rejects.toThrow(/already/i);
+    });
+
     it('assigns the driver, flips status, notifies and broadcasts on success', async () => {
       tripsRepo.findOne.mockResolvedValue(trip());
       driversRepo.findOne.mockResolvedValue(driver());
@@ -144,6 +155,65 @@ describe('TripsService', () => {
       driversRepo.findOne.mockResolvedValue(driver());
       await expect(
         service.updateStatus('stranger', 'trip-1', { status: TripStatus.CANCELLED } as any),
+      ).rejects.toThrow(/Not allowed/i);
+    });
+
+    it('allows customer to cancel', async () => {
+      tripsRepo.findOne.mockResolvedValue(trip({ driverId: null }));
+      driversRepo.findOne.mockResolvedValue(null);
+      const cancelled = await service.updateStatus('cust-1', 'trip-1', { status: TripStatus.CANCELLED } as any);
+      expect(cancelled.status).toBe(TripStatus.CANCELLED);
+    });
+
+    it('allows driver to cancel', async () => {
+      tripsRepo.findOne.mockResolvedValue(trip({ driverId: 'drv-1' }));
+      driversRepo.findOne.mockResolvedValue(driver());
+      const cancelled = await service.updateStatus('drv-user-1', 'trip-1', { status: TripStatus.CANCELLED } as any);
+      expect(cancelled.status).toBe(TripStatus.CANCELLED);
+    });
+
+    it('resets driver to ONLINE when trip with driver is cancelled', async () => {
+      tripsRepo.findOne.mockResolvedValue(trip({ driverId: 'drv-1' }));
+      driversRepo.findOne.mockResolvedValue(driver());
+      await service.updateStatus('cust-1', 'trip-1', { status: TripStatus.CANCELLED } as any);
+      expect(driversRepo.update).toHaveBeenCalledWith('drv-1', { status: DriverStatus.ONLINE });
+    });
+
+    it('driver can set DRIVER_ARRIVING status', async () => {
+      tripsRepo.findOne.mockResolvedValue(trip({ status: TripStatus.ACCEPTED, driverId: 'drv-1' }));
+      driversRepo.findOne.mockResolvedValue(driver());
+      const result = await service.updateStatus('drv-user-1', 'trip-1', { status: TripStatus.DRIVER_ARRIVING } as any);
+      expect(result.status).toBe(TripStatus.DRIVER_ARRIVING);
+    });
+
+    it('driver can set DRIVER_ARRIVED status', async () => {
+      tripsRepo.findOne.mockResolvedValue(trip({ status: TripStatus.DRIVER_ARRIVING, driverId: 'drv-1' }));
+      driversRepo.findOne.mockResolvedValue(driver());
+      const result = await service.updateStatus('drv-user-1', 'trip-1', { status: TripStatus.DRIVER_ARRIVED } as any);
+      expect(result.status).toBe(TripStatus.DRIVER_ARRIVED);
+    });
+
+    it('non-driver cannot set arrival statuses', async () => {
+      tripsRepo.findOne.mockResolvedValue(trip({ status: TripStatus.ACCEPTED, driverId: 'drv-1' }));
+      driversRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.updateStatus('cust-1', 'trip-1', { status: TripStatus.DRIVER_ARRIVING } as any),
+      ).rejects.toThrow(/Only driver/i);
+    });
+
+    it('driver can set STARTED status', async () => {
+      tripsRepo.findOne.mockResolvedValue(trip({ status: TripStatus.DRIVER_ARRIVED, driverId: 'drv-1' }));
+      driversRepo.findOne.mockResolvedValue(driver());
+      const result = await service.updateStatus('drv-user-1', 'trip-1', { status: TripStatus.STARTED } as any);
+      expect(result.status).toBe(TripStatus.STARTED);
+      expect(result.startedAt).toBeDefined();
+    });
+
+    it('non-participant cannot modify a non-cancel trip', async () => {
+      tripsRepo.findOne.mockResolvedValue(trip({ status: TripStatus.STARTED, driverId: 'drv-1' }));
+      driversRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.updateStatus('stranger', 'trip-1', { status: TripStatus.COMPLETED } as any),
       ).rejects.toThrow(/Not allowed/i);
     });
 
@@ -171,6 +241,67 @@ describe('TripsService', () => {
       const res = await service.listAll();
       expect(res.length).toBe(2);
       expect(tripsRepo.find).toHaveBeenCalledWith(expect.objectContaining({ take: 100 }));
+    });
+  });
+
+  describe('getActiveForCustomer', () => {
+    it('returns trips for the customer', async () => {
+      tripsRepo.find.mockResolvedValue([trip()]);
+      const res = await service.getActiveForCustomer('cust-1');
+      expect(res.length).toBe(1);
+      expect(tripsRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { customerId: 'cust-1' } }),
+      );
+    });
+  });
+
+  describe('getActiveForDriver', () => {
+    it('returns empty array when driver profile not found', async () => {
+      driversRepo.findOne.mockResolvedValue(null);
+      const res = await service.getActiveForDriver('nonexistent');
+      expect(res).toEqual([]);
+    });
+
+    it('returns trips for the driver', async () => {
+      driversRepo.findOne.mockResolvedValue({ id: 'drv-1' });
+      tripsRepo.find.mockResolvedValue([trip()]);
+      const res = await service.getActiveForDriver('drv-user-1');
+      expect(res.length).toBe(1);
+    });
+  });
+
+  describe('findOne', () => {
+    it('throws NotFoundException when trip not found', async () => {
+      tripsRepo.findOne.mockResolvedValue(null);
+      await expect(service.findOne('nonexistent')).rejects.toThrow(/not found/i);
+    });
+
+    it('returns the trip', async () => {
+      tripsRepo.findOne.mockResolvedValue(trip());
+      const res = await service.findOne('trip-1');
+      expect(res.id).toBe('trip-1');
+    });
+  });
+
+  describe('findNearestDriverForTrip', () => {
+    it('returns null when no nearby drivers', async () => {
+      redis.nearby.mockResolvedValue([]);
+      const result = await service.findNearestDriverForTrip(trip() as any);
+      expect(result).toBeNull();
+    });
+
+    it('returns null when no available drivers match', async () => {
+      redis.nearby.mockResolvedValue([{ member: 'drv-1', distanceKm: 1 }]);
+      driversRepo.find.mockResolvedValue([driver({ status: DriverStatus.ON_DELIVERY })]);
+      const result = await service.findNearestDriverForTrip(trip() as any);
+      expect(result).toBeNull();
+    });
+
+    it('returns the nearest available driver', async () => {
+      redis.nearby.mockResolvedValue([{ member: 'drv-1', distanceKm: 1 }]);
+      driversRepo.find.mockResolvedValue([driver()]);
+      const result = await service.findNearestDriverForTrip(trip() as any);
+      expect(result).toBe('drv-1');
     });
   });
 });

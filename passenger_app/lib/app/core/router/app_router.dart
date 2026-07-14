@@ -9,6 +9,8 @@ import 'package:geny_app/app/modules/auth/pages/register_page.dart';
 import 'package:geny_app/app/modules/auth/pages/splash_page.dart';
 import 'package:geny_app/app/modules/driver/home/driver_home_page.dart';
 import 'package:geny_app/app/modules/passenger/home/passenger_home_page.dart';
+import 'package:geny_app/app/modules/restaurant/home/restaurant_home_page.dart';
+import 'package:geny_app/app/modules/admin/home/admin_home_page.dart';
 import 'package:geny_app/app/modules/shared/profile/profile_page.dart';
 import 'package:geny_app/app/modules/shared/history/history_page.dart';
 import 'package:geny_app/app/modules/shared/history/history_controller.dart';
@@ -42,12 +44,21 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       if ((path == '/login' || path == '/register') && isAuthenticated) {
-        return auth.isDriver ? '/driver' : '/passenger';
+        return auth.homePath;
       }
 
       // Lock role-specific shells to the appropriate role.
-      if (path.startsWith('/driver') && auth.role != AppRole.DRIVER && isAuthenticated) return '/passenger';
-      if (path.startsWith('/passenger') && auth.role != AppRole.CUSTOMER && isAuthenticated) return '/driver';
+      const protectedShells = {
+        '/driver': AppRole.DRIVER,
+        '/passenger': AppRole.CUSTOMER,
+        '/restaurant': AppRole.RESTAURANT,
+        '/admin': AppRole.ADMIN,
+      };
+      for (final entry in protectedShells.entries) {
+        if (path.startsWith(entry.key) && auth.role != entry.value && isAuthenticated) {
+          return auth.homePath;
+        }
+      }
 
       return null;
     },
@@ -92,6 +103,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             pageBuilder: (_, __) => const NoTransitionPage(child: const ProfilePage()),
           ),
         ],
+      ),
+      GoRoute(
+        path: '/restaurant',
+        builder: (_, __) => const RestaurantHomePage(),
+      ),
+      GoRoute(
+        path: '/admin',
+        builder: (_, __) => const AdminHomePage(),
       ),
     ],
   );

@@ -35,6 +35,21 @@ class AuthState {
   bool get isAuthenticated => accessToken != null && userId != null;
   bool get isDriver => role == AppRole.DRIVER;
 
+  /// The home route for the current role (used by redirects/splash).
+  String get homePath {
+    switch (role) {
+      case AppRole.DRIVER:
+        return '/driver';
+      case AppRole.RESTAURANT:
+        return '/restaurant';
+      case AppRole.ADMIN:
+        return '/admin';
+      case AppRole.CUSTOMER:
+      case null:
+        return '/passenger';
+    }
+  }
+
   AuthState copyWith({
     bool? isLoading,
     AppFailure? error,
@@ -89,6 +104,7 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       final body = await _api.login(identifier, password);
       await _persist(body);
+      await _pushFcmToken();
       state = state.copyWith(isLoading: false);
       return true;
     } on AppFailure catch (f) {
@@ -135,6 +151,17 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> logout() async {
     await _storage.clearAll();
     state = const AuthState();
+  }
+
+  /// Push the locally cached FCM token to the server once authenticated.
+  Future<void> _pushFcmToken() async {
+    final token = await _storage.getFcmToken();
+    if (token == null) return;
+    try {
+      await _api.updateProfile({'fcmToken': token});
+    } catch (_) {
+      // Retried by FcmRegistrar on token refresh / next launch.
+    }
   }
 
   Future<void> _persist(Map<String, dynamic> body) async {

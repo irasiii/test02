@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'package:geny_app/app/data/providers/providers.dart';
@@ -68,12 +69,28 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
 
       final orderId = order['id'];
       final total = (order['total'] as num?)?.toDouble() ?? 0;
-      await ref.read(apiClientProvider).createPaymentIntent(
+      final intent = await ref.read(apiClientProvider).createPaymentIntent(
         purpose: 'ORDER',
         referenceId: orderId,
         amount: total,
         description: 'GenY order $orderId',
       );
+      if (!mounted) return;
+
+      // Confirm the Stripe PaymentIntent client-side. Skipped in demo mode
+      // (mock backend returns a `pi_mock_*` client secret with no real key).
+      final clientSecret = intent['clientSecret'] as String?;
+      if (clientSecret != null &&
+          clientSecret.startsWith('pi_') &&
+          !clientSecret.startsWith('pi_mock_')) {
+        await Stripe.instance.initPaymentSheet(
+          paymentSheetParameters: SetupPaymentSheetParameters(
+            paymentIntentClientSecret: clientSecret,
+            merchantDisplayName: 'GenY',
+          ),
+        );
+        await Stripe.instance.presentPaymentSheet();
+      }
       if (!mounted) return;
       widget.onClosed();
       ScaffoldMessenger.of(context).showSnackBar(

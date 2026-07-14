@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -8,11 +8,12 @@ import { UpdateRestaurantDto } from './dtos/update-restaurant.dto';
 
 @Injectable()
 export class RestaurantsService {
-  constructor(@InjectRepository(Restaurant) private readonly restaurants: Repository<Restaurant>) {}
+  constructor(@InjectRepository(Restaurant) private readonly restaurants: Repository< Restaurant>) {}
 
-  async create(dto: CreateRestaurantDto) {
+  async create(dto: CreateRestaurantDto, ownerId?: string) {
     const restaurant = this.restaurants.create({
       ...dto,
+      ownerId: ownerId ?? null,
       status: RestaurantStatus.OPEN,
       rating: 0,
       ratingCount: 0,
@@ -39,12 +40,22 @@ export class RestaurantsService {
     return r;
   }
 
-  async update(id: string, dto: UpdateRestaurantDto) {
+  /** Asserts the actor owns the restaurant (admin bypasses). */
+  async assertOwned(id: string, actorId: string, isAdmin: boolean) {
+    const r = await this.findOne(id);
+    if (!isAdmin && r.ownerId !== actorId) {
+      throw new ForbiddenException('You do not own this restaurant');
+    }
+    return r;
+  }
+
+  async update(id: string, dto: UpdateRestaurantDto, actorId?: string, isAdmin = false) {
+    if (actorId) await this.assertOwned(id, actorId, isAdmin);
     await this.restaurants.update(id, dto);
     return this.findOne(id);
   }
 
-  async remove(id: string) {
+  async remove(id: string, isAdmin = true) {
     await this.restaurants.softDelete(id);
     return { success: true };
   }
@@ -54,3 +65,4 @@ export class RestaurantsService {
     return this.findOne(id);
   }
 }
+

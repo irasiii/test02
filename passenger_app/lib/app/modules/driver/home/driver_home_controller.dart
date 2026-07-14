@@ -9,6 +9,14 @@ import 'package:geny_app/app/data/providers/providers.dart';
 import 'package:geny_app/app/data/services/api_client.dart';
 import 'package:geny_app/app/data/services/tracking_client.dart';
 
+const _activeOrderStatuses = {
+  'ACCEPTED',
+  'PREPARING',
+  'READY',
+  'PICKED_UP',
+  'ON_THE_WAY',
+};
+
 class DriverHomeController extends StateNotifier<DriverHomeState> {
   DriverHomeController(this._api, this._tracking)
       : super(const DriverHomeState());
@@ -25,11 +33,29 @@ class DriverHomeController extends StateNotifier<DriverHomeState> {
       await _tracking.connect();
       _subscribeTrackingEvents();
       _startPingLoop();
+      await _loadActiveDelivery();
       state = state.copyWith(isOnline: true, isToggling: false);
     } on AppFailure catch (e) {
       state = state.copyWith(isToggling: false, error: e);
     } catch (e) {
       state = state.copyWith(isToggling: false, error: AppFailure.serverError(e.toString()));
+    }
+  }
+
+  Future<void> _loadActiveDelivery() async {
+    try {
+      final deliveries = await _api.driverDeliveries();
+      final active = deliveries.where((e) {
+        final status = (e as Map)['status'] as String?;
+        return status != null && _activeOrderStatuses.contains(status);
+      }).toList();
+      if (active.isNotEmpty) {
+        final order = Map<String, dynamic>.from(active.first as Map);
+        state = state.copyWith(activeOrder: order);
+        _tracking.join('order:${order['id']}');
+      }
+    } catch (_) {
+      // Best-effort; delivery will appear when the next order:update arrives.
     }
   }
 
@@ -67,6 +93,17 @@ class DriverHomeController extends StateNotifier<DriverHomeState> {
         final data = event.data as Map?;
         final offer = data != null ? Map<String, dynamic>.from(data) : null;
         state = state.copyWith(activeOffer: offer);
+      } else if (event.event == 'order:update') {
+        final data = event.data is Map ? Map<String, dynamic>.from(event.data as Map) : null;
+        if (data == null) return;
+        final oid = data['orderId'] ?? data['id'];
+        final current = state.activeOrder;
+        if (current != null && current['id'] == oid) {
+          state = state.copyWith(activeOrder: {...current, ...data});
+        } else if (oid != null && _activeOrderStatuses.contains(data['status'] as String?)) {
+          state = state.copyWith(activeOrder: Map<String, dynamic>.from(data));
+          _tracking.join('order:$oid');
+        }
       }
     });
   }
@@ -99,6 +136,25 @@ class DriverHomeController extends StateNotifier<DriverHomeState> {
     }
   }
 
+  Future<void> advanceOrder() async {
+    final order = state.activeOrder;
+    if (order == null) return;
+    final id = order['id'] as String?;
+    if (id == null) return;
+    final next = _nextOrderStatus(order['status'] as String? ?? '');
+    if (next == null) return;
+    try {
+      await _api.updateOrderStatus(id, next);
+      if (next == 'DELIVERED') {
+        state = state.copyWith(clearOrder: true);
+      } else {
+        state = state.copyWith(activeOrder: {...order, 'status': next});
+      }
+    } on AppFailure catch (e) {
+      state = state.copyWith(error: e);
+    }
+  }
+
   void declineOffer() {
     state = state.copyWith(clearOffer: true);
   }
@@ -108,6 +164,21 @@ class DriverHomeController extends StateNotifier<DriverHomeState> {
     _pingTimer?.cancel();
     _eventsSub?.cancel();
     super.dispose();
+  }
+}
+
+String? _nextOrderStatus(String current) {
+  switch (current) {
+    case 'ACCEPTED':
+    case 'PREPARING':
+    case 'READY':
+      return 'PICKED_UP';
+    case 'PICKED_UP':
+      return 'ON_THE_WAY';
+    case 'ON_THE_WAY':
+      return 'DELIVERED';
+    default:
+      return null;
   }
 }
 
@@ -125,6 +196,7 @@ class DriverHomeState {
     this.activeOffer,
     this.activeTripId,
     this.activeTrip,
+    this.activeOrder,
   });
 
   final bool isOnline;
@@ -133,6 +205,7 @@ class DriverHomeState {
   final Map<String, dynamic>? activeOffer;
   final String? activeTripId;
   final Map<String, dynamic>? activeTrip;
+  final Map<String, dynamic>? activeOrder;
 
   DriverHomeState copyWith({
     bool? isOnline,
@@ -141,9 +214,11 @@ class DriverHomeState {
     Map<String, dynamic>? activeOffer,
     String? activeTripId,
     Map<String, dynamic>? activeTrip,
+    Map<String, dynamic>? activeOrder,
     bool clearError = false,
     bool clearOffer = false,
     bool clearTrip = false,
+    bool clearOrder = false,
   }) {
     return DriverHomeState(
       isOnline: isOnline ?? this.isOnline,
@@ -152,6 +227,7 @@ class DriverHomeState {
       activeOffer: clearOffer ? null : (activeOffer ?? this.activeOffer),
       activeTripId: clearTrip ? null : (activeTripId ?? this.activeTripId),
       activeTrip: clearTrip ? null : (activeTrip ?? this.activeTrip),
+      activeOrder: clearOrder ? null : (activeOrder ?? this.activeOrder),
     );
   }
 }

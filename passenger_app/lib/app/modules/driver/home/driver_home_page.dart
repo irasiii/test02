@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'driver_home_controller.dart';
 import 'widgets/driver_status_card.dart';
 import 'widgets/active_trip_card.dart';
+import 'widgets/active_delivery_card.dart';
 import 'widgets/trip_offer_card.dart';
 
 class DriverHomePage extends ConsumerWidget {
@@ -69,7 +70,7 @@ class DriverHomePage extends ConsumerWidget {
                             }
                           },
                           onDecline: () {
-                            ref.read(driverHomeControllerProvider.notifier).dispose();
+                            state.declineOffer();
                           },
                         ),
                       if (homeState.activeTrip != null)
@@ -82,6 +83,11 @@ class DriverHomePage extends ConsumerWidget {
                             final next = _nextStatus(currentStatus);
                             if (next != null) state.updateTripStatus(id, next);
                           },
+                        ),
+                      if (homeState.activeOrder != null)
+                        ActiveDeliveryCard(
+                          order: homeState.activeOrder!,
+                          onAdvance: () => state.advanceOrder(),
                         ),
                       if (homeState.activeOffer == null && homeState.activeTrip == null)
                         Column(

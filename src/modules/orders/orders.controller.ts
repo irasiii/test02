@@ -43,9 +43,12 @@ export class OrdersController {
   }
 
   @Get('restaurant/:restaurantId')
-  @ApiOperation({ summary: 'Restaurant lists incoming orders' })
-  listForRestaurant(@Param('restaurantId') rid: string) {
-    return this.orders.listForRestaurant(rid);
+  @ApiOperation({ summary: 'Restaurant lists incoming orders (owner or admin)' })
+  listForRestaurant(@CurrentUser() user: AuthUser, @Param('restaurantId') rid: string) {
+    return this.orders.listForRestaurant(rid, {
+      id: user.id,
+      isAdmin: (user as any).role === 'ADMIN',
+    });
   }
 
   @Get('driver')
@@ -67,6 +70,6 @@ export class OrdersController {
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
   ) {
-    return this.orders.updateStatus(user.id, id, dto);
+    return this.orders.updateStatus(user.id, id, dto, (user as any).role === 'ADMIN');
   }
 }

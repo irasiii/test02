@@ -118,6 +118,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                         segments: const [
                           ButtonSegment(value: AppRole.CUSTOMER, label: Text('Customer'), icon: Icon(Icons.person)),
                           ButtonSegment(value: AppRole.DRIVER, label: Text('Driver'), icon: Icon(Icons.drive_eta)),
+                          ButtonSegment(value: AppRole.RESTAURANT, label: Text('Restaurant'), icon: Icon(Icons.restaurant)),
+                          ButtonSegment(value: AppRole.ADMIN, label: Text('Admin'), icon: Icon(Icons.admin_panel_settings)),
                         ],
                         selected: {_role},
                         onSelectionChanged: (s) => setState(() => _role = s.first),

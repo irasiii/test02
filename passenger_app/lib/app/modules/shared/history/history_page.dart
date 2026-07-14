@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 import 'history_controller.dart';
+import 'package:geny_app/app/data/providers/providers.dart';
+import 'package:geny_app/app/modules/shared/rating/rate_dialog.dart';
 
 class HistoryPage extends ConsumerWidget {
   const HistoryPage({super.key, required this.type});
@@ -59,10 +61,16 @@ class HistoryPage extends ConsumerWidget {
                   HistoryType.orders     => item['total'] ?? 0,
                   HistoryType.deliveries => item['total'] ?? 0,
                 };
-                final status = item['status'] ?? '';
+                final status = item['status']?.toString() ?? '';
                 final createdAt = item['createdAt'] is String
                     ? DateTime.tryParse(item['createdAt'] as String)
                   : null;
+
+                final completed = _isCompleted(type, status);
+                final cancelable = _isCancelable(type, status);
+                final ratingTarget = _ratingTarget(type, item);
+                final ratingTargetId = _ratingTargetId(type, item);
+                final canRate = completed && ratingTarget != null && ratingTargetId != null;
 
                 return ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -78,15 +86,49 @@ class HistoryPage extends ConsumerWidget {
                     ),
                   ),
                   title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Row(
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (createdAt != null)
-                        Text(timeago.format(createdAt), style: const TextStyle(fontSize: 11)),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(6)),
-                        child: Text(status.toString(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      Row(
+                        children: [
+                          if (createdAt != null)
+                            Text(timeago.format(createdAt), style: const TextStyle(fontSize: 11)),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(6)),
+                            child: Text(status, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          if (cancelable)
+                            TextButton.icon(
+                              onPressed: () => _cancel(context, ref, type, item, status),
+                              icon: const Icon(Icons.cancel_outlined, size: 16, color: Colors.red),
+                              label: const Text('Cancel', style: TextStyle(color: Colors.red, fontSize: 12)),
+                              style: TextButton.styleFrom(minimumSize: Size.zero, padding: const EdgeInsets.symmetric(horizontal: 8)),
+                            ),
+                          if (canRate)
+                            TextButton.icon(
+                              onPressed: () => showRatingDialog(
+                                context,
+                                target: ratingTarget,
+                                targetId: ratingTargetId,
+                                referenceId: item['id']?.toString(),
+                                title: type == HistoryType.trips
+                                    ? 'Rate your driver'
+                                    : type == HistoryType.orders
+                                        ? 'Rate this restaurant'
+                                        : 'Rate your customer',
+                              ),
+                              icon: const Icon(Icons.star_outline, size: 16),
+                              label: const Text('Rate', style: TextStyle(fontSize: 12)),
+                              style: TextButton.styleFrom(minimumSize: Size.zero, padding: const EdgeInsets.symmetric(horizontal: 8)),
+                            ),
+                        ],
                       ),
                     ],
                   ),
@@ -117,5 +159,73 @@ class HistoryPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _cancel(BuildContext context, WidgetRef ref, HistoryType type, Map<String, dynamic> item, String status) async {
+    final id = item['id']?.toString();
+    if (id == null) return;
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel?'),
+        content: const Text('Are you sure you want to cancel this?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('No')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, 'Cancelled by user'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Yes, cancel'),
+          ),
+        ],
+      ),
+    );
+    if (reason == null) return;
+    try {
+      final api = ref.read(apiClientProvider);
+      if (type == HistoryType.trips) {
+        await api.updateTripStatus(id, 'CANCELLED', cancelReason: reason);
+      } else {
+        await api.updateOrderStatus(id, 'CANCELLED', cancelReason: reason);
+      }
+      ref.invalidate(historyStreamProvider(type));
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cancel failed: $e')));
+      }
+    }
+  }
+}
+
+bool _isCompleted(HistoryType type, String status) {
+  if (type == HistoryType.trips) return status == 'COMPLETED';
+  return status == 'DELIVERED';
+}
+
+bool _isCancelable(HistoryType type, String status) {
+  if (type == HistoryType.trips) return status == 'REQUESTED' || status == 'ACCEPTED';
+  return status == 'PENDING' || status == 'ACCEPTED';
+}
+
+String? _ratingTarget(HistoryType type, Map<String, dynamic> item) {
+  switch (type) {
+    case HistoryType.trips:
+      return item['driverId'] != null ? 'DRIVER' : null;
+    case HistoryType.orders:
+      final r = item['restaurant'];
+      return (r is Map ? r['id'] : item['restaurantId']) != null ? 'RESTAURANT' : null;
+    case HistoryType.deliveries:
+      return item['customerId'] != null ? 'CUSTOMER' : null;
+  }
+}
+
+String? _ratingTargetId(HistoryType type, Map<String, dynamic> item) {
+  switch (type) {
+    case HistoryType.trips:
+      return item['driverId'] as String?;
+    case HistoryType.orders:
+      final r = item['restaurant'];
+      return r is Map ? r['id'] as String? : item['restaurantId'] as String?;
+    case HistoryType.deliveries:
+      return item['customerId'] as String?;
   }
 }

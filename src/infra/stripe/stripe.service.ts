@@ -56,6 +56,7 @@ export class StripeService {
   buildWebhookEvent(rawBody: Buffer | string, signature: string) {
     const webhookSecret = this.config.get<string>('stripe.webhookSecret', '');
     if (!webhookSecret) throw new BadRequestException('Stripe webhook secret missing');
+    if (!this.client) throw new BadRequestException('Stripe not configured (mock mode)');
     return this.client.webhooks.constructEvent(rawBody, signature, webhookSecret);
   }
 

@@ -40,12 +40,13 @@ class ProfilePage extends ConsumerWidget {
             Center(child: Chip(label: Text(role.label), padding: const EdgeInsets.symmetric(horizontal: 8))),
           const SizedBox(height: 24),
           const Divider(),
-          ListTile(
-            leading: const Icon(Icons.directions_car_outlined),
-            title: Text(role == AppRole.DRIVER ? 'My trips log' : 'My ride history'),
-            onTap: () => context.go('/passenger/rides'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          ),
+          if (role == AppRole.CUSTOMER || role == AppRole.DRIVER)
+            ListTile(
+              leading: const Icon(Icons.directions_car_outlined),
+              title: Text(role == AppRole.DRIVER ? 'My deliveries' : 'My ride history'),
+              onTap: () => context.go(role == AppRole.DRIVER ? '/driver/deliveries' : '/passenger/rides'),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            ),
           if (role == AppRole.CUSTOMER)
             ListTile(
               leading: const Icon(Icons.restaurant_menu),

@@ -15,6 +15,7 @@ import { RestaurantsService } from './restaurants.service';
 import { CreateRestaurantDto } from './dtos/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dtos/update-restaurant.dto';
 import { JwtAuthGuard } from '../../app/common/guards/jwt-auth.guard';
+import { CurrentUser, AuthUser } from '../../app/common/decorators/current-user.decorator';
 import { Roles, Role } from '../../app/common/decorators/roles.decorator';
 
 @ApiTags('Restaurants')
@@ -26,9 +27,9 @@ export class RestaurantsController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Roles(Role.RESTAURANT, Role.ADMIN)
-  @ApiOperation({ summary: 'Register a restaurant' })
-  create(@Body() dto: CreateRestaurantDto) {
-    return this.restaurants.create(dto);
+  @ApiOperation({ summary: 'Register a restaurant (owner = caller)' })
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreateRestaurantDto) {
+    return this.restaurants.create(dto, user.id);
   }
 
   @Get()
@@ -47,9 +48,13 @@ export class RestaurantsController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Roles(Role.RESTAURANT, Role.ADMIN)
-  @ApiOperation({ summary: 'Update restaurant' })
-  update(@Param('id') id: string, @Body() dto: UpdateRestaurantDto) {
-    return this.restaurants.update(id, dto);
+  @ApiOperation({ summary: 'Update restaurant (owner or admin)' })
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateRestaurantDto,
+  ) {
+    return this.restaurants.update(id, dto, user.id, (user as any).role === Role.ADMIN);
   }
 
   @Delete(':id')
@@ -58,6 +63,6 @@ export class RestaurantsController {
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: '[Admin] Soft delete a restaurant' })
   remove(@Param('id') id: string) {
-    return this.restaurants.remove(id);
+    return this.restaurants.remove(id, true);
   }
 }

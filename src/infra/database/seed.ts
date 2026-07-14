@@ -78,6 +78,18 @@ async function seed() {
   });
   await userRepo.save(driverUser);
 
+  // Restaurant owner (so the seeded restaurant has a usable owner account).
+  const restaurantUser = userRepo.create({
+    email: 'burgers@geny.app',
+    phone: '+10000000004',
+    firstName: 'Burger',
+    lastName: 'Owner',
+    role: Role.RESTAURANT,
+    passwordHash: password,
+    isActive: true,
+  });
+  await userRepo.save(restaurantUser);
+
   const driver = driverRepo.create({
     userId: driverUser.id,
     status: DriverStatus.ONLINE,
@@ -106,6 +118,7 @@ async function seed() {
 
   // Restaurant
   const restaurant = restaurantRepo.create({
+    ownerId: restaurantUser.id,
     email: 'burgers@geny.app',
     phone: '+10000000004',
     name: 'GenY Burger House',
@@ -163,7 +176,7 @@ async function seed() {
       admin: { email: admin.email, password: 'P@ssw0rd' },
       customer: { email: customer.email, password: 'P@ssw0rd' },
       driver: { email: driverUser.email, password: 'P@ssw0rd' },
-      restaurant: { email: restaurant.email, name: restaurant.name },
+      restaurant: { email: restaurantUser.email, password: 'P@ssw0rd', name: restaurant.name },
     },
     null,
     2,

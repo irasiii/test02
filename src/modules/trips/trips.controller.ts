@@ -36,6 +36,12 @@ export class TripsController {
     return this.trips.listAll();
   }
 
+  @Get('me')
+  @ApiOperation({ summary: "List the authenticated user's recent trips" })
+  list(@CurrentUser() user: AuthUser) {
+    return this.trips.getActiveForCustomer(user.id);
+  }
+
   @Post(':id/accept')
   @ApiOperation({ summary: 'Driver accepts a trip request' })
   accept(@CurrentUser() user: AuthUser, @Param('id') id: string) {
@@ -50,12 +56,6 @@ export class TripsController {
     @Body() dto: UpdateTripStatusDto,
   ) {
     return this.trips.updateStatus(user.id, id, dto);
-  }
-
-  @Get('me')
-  @ApiOperation({ summary: "List the authenticated user's recent trips" })
-  list(@CurrentUser() user: AuthUser) {
-    return this.trips.getActiveForCustomer(user.id);
   }
 
   @Get(':id')

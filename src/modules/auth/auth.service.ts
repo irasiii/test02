@@ -6,6 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
@@ -30,6 +31,7 @@ export class AuthService {
     @InjectRepository(Driver)
     private readonly drivers: Repository<Driver>,
     private readonly jwt: JwtService,
+    private readonly config: ConfigService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -106,8 +108,10 @@ export class AuthService {
 
   private async issueTokens(user: User) {
     const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
-    const accessToken = await this.jwt.signAsync(payload, { expiresIn: '15m' });
-    const refreshToken = await this.jwt.signAsync(payload, { expiresIn: '7d' });
+    const accessExpiresIn = this.config.get<string>('jwt.accessExpiresIn', '15m');
+    const refreshExpiresIn = this.config.get<string>('jwt.refreshExpiresIn', '7d');
+    const accessToken = await this.jwt.signAsync(payload, { expiresIn: accessExpiresIn });
+    const refreshToken = await this.jwt.signAsync(payload, { expiresIn: refreshExpiresIn });
     return {
       accessToken,
       refreshToken,

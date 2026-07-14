@@ -15,7 +15,7 @@ class SplashPage extends ConsumerWidget {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!auth.isLoading) {
         if (auth.isAuthenticated && auth.role != null) {
-          context.go(auth.isDriver ? '/driver' : '/passenger');
+          context.go(auth.homePath);
         } else {
           context.go('/login');
         }

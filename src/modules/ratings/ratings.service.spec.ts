@@ -42,9 +42,21 @@ describe('RatingsService', () => {
     service = moduleRef.get(RatingsService);
   });
 
-  it('rejects out-of-range star values', async () => {
+  it('rejects out-of-range star values (too high)', async () => {
     await expect(
       service.create('u1', { target: RatingTarget.DRIVER, targetId: 'd1', stars: 6 } as any),
+    ).rejects.toThrow(/1\.\.5/);
+  });
+
+  it('rejects out-of-range star values (too low)', async () => {
+    await expect(
+      service.create('u1', { target: RatingTarget.DRIVER, targetId: 'd1', stars: 0 } as any),
+    ).rejects.toThrow(/1\.\.5/);
+  });
+
+  it('rejects negative star values', async () => {
+    await expect(
+      service.create('u1', { target: RatingTarget.DRIVER, targetId: 'd1', stars: -1 } as any),
     ).rejects.toThrow(/1\.\.5/);
   });
 
@@ -59,6 +71,20 @@ describe('RatingsService', () => {
     expect(restaurantsRepo.update).toHaveBeenCalledWith('rest-1', { rating: 4.5, ratingCount: 2 });
   });
 
+  it('does not update target when avg is null (first rating scenario)', async () => {
+    const qb: any = {
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({ avg: null, count: '0' }),
+    };
+    ratingsRepo.createQueryBuilder.mockReturnValue(qb);
+
+    await service.create('u1', { target: RatingTarget.DRIVER, targetId: 'd1', stars: 3 } as any);
+    expect(driversRepo.update).not.toHaveBeenCalled();
+  });
+
   it('findByTarget returns ratings ordered by recency', async () => {
     ratingsRepo.find.mockResolvedValue([{ id: 'r1' }]);
     const res = await service.findByTarget(RatingTarget.DRIVER, 'd1');
@@ -66,5 +92,29 @@ describe('RatingsService', () => {
     expect(ratingsRepo.find).toHaveBeenCalledWith(
       expect.objectContaining({ where: { target: RatingTarget.DRIVER, targetId: 'd1' } }),
     );
+  });
+
+  it('findByReviewer returns ratings by the reviewer', async () => {
+    ratingsRepo.find.mockResolvedValue([{ id: 'r1', reviewerId: 'u1' }]);
+    const res = await service.findByReviewer('u1');
+    expect(res.length).toBe(1);
+    expect(ratingsRepo.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { reviewerId: 'u1' } }),
+    );
+  });
+
+  it('creates a rating with all optional fields', async () => {
+    const r = await service.create('u1', {
+      target: RatingTarget.CUSTOMER,
+      targetId: 'cust-1',
+      stars: 5,
+      title: 'Great',
+      comment: 'Very polite',
+      tags: ['Quick', 'Polite'],
+      referenceId: 'trip-1',
+    } as any);
+    expect(r.stars).toBe(5);
+    expect(r.title).toBe('Great');
+    expect(r.comment).toBe('Very polite');
   });
 });

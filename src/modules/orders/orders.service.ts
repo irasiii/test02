@@ -107,19 +107,21 @@ export class OrdersService {
       scheduled: dto.scheduled ?? false,
     });
 
+    let savedOrder: Order;
     await this.dataSource.transaction(async (em) => {
-      const saved = await em.save(order);
+      savedOrder = await em.save(order);
       await Promise.all(
-        orderItems.map((oi) => em.save(OrderItem, { ...oi, orderId: saved.id } as OrderItem)),
+        orderItems.map((oi) => em.save(OrderItem, { ...oi, orderId: savedOrder!.id } as OrderItem)),
       );
     });
-    return order;
+    return savedOrder!;
   }
 
   async updateStatus(
     actorUserId: string,
     orderId: string,
     dto: UpdateOrderStatusDto,
+    isAdmin = false,
   ) {
     const order = await this.orders.findOne({
       where: { id: orderId },
@@ -131,10 +133,10 @@ export class OrdersService {
     const driver = await this.drivers.findOne({ where: { userId: actorUserId } });
     const isCustomer = order.customerId === actorUserId;
     const isDriver = driver && order.driverId === driver.id;
-    const isRestaurant = !!(order.restaurant && order.restaurant.email === actorUserId);
+    const isRestaurant = !!(order.restaurant && order.restaurant.ownerId === actorUserId);
 
     if (dto.status === OrderStatus.CANCELLED) {
-      if (!isCustomer) throw new ForbiddenException('Only customer can cancel');
+      if (!isCustomer && !isAdmin) throw new ForbiddenException('Only customer or admin can cancel');
       if ([OrderStatus.PICKED_UP, OrderStatus.ON_THE_WAY, OrderStatus.DELIVERED].includes(order.status)) {
         throw new BadRequestException('Cannot cancel an in-progress order');
       }
@@ -148,7 +150,7 @@ export class OrdersService {
 
     // Restaurant statuses
     if ([OrderStatus.ACCEPTED, OrderStatus.PREPARING, OrderStatus.READY, OrderStatus.REJECTED].includes(dto.status)) {
-      if (!isRestaurant) throw new ForbiddenException('Only restaurant can set this status');
+      if (!isRestaurant && !isAdmin) throw new ForbiddenException('Only restaurant can set this status');
       if (dto.status === OrderStatus.ACCEPTED) order.acceptedAt = new Date();
       if (dto.status === OrderStatus.READY) order.preparedAt = new Date();
       order.status = dto.status;
@@ -163,7 +165,7 @@ export class OrdersService {
 
     // Driver statuses
     if ([OrderStatus.PICKED_UP, OrderStatus.ON_THE_WAY, OrderStatus.DELIVERED].includes(dto.status)) {
-      if (!isDriver) throw new ForbiddenException('Only the assigned driver can set this status');
+      if (!isDriver && !isAdmin) throw new ForbiddenException('Only the assigned driver can set this status');
       if (dto.status === OrderStatus.PICKED_UP) order.pickedUpAt = new Date();
       if (dto.status === OrderStatus.DELIVERED) order.deliveredAt = new Date();
       order.status = dto.status;
@@ -191,8 +193,8 @@ export class OrdersService {
   }
 
   /** Restaurant accepts an order and the matching engine assigns nearest driver */
-  async accept(orderId: string, restaurantEmail: string) {
-    return this.updateStatus(restaurantEmail, orderId, {
+  async accept(orderId: string, restaurantOwnerId: string) {
+    return this.updateStatus(restaurantOwnerId, orderId, {
       status: OrderStatus.ACCEPTED,
     });
   }
@@ -215,7 +217,14 @@ export class OrdersService {
     });
   }
 
-  async listForRestaurant(restaurantId: string) {
+  async listForRestaurant(restaurantId: string, actor?: { id: string; isAdmin: boolean }) {
+    if (actor) {
+      const r = await this.restaurants.findOne({ where: { id: restaurantId } });
+      if (!r) throw new NotFoundException('Restaurant not found');
+      if (!actor.isAdmin && r.ownerId !== actor.id) {
+        throw new ForbiddenException('You do not own this restaurant');
+      }
+    }
     return this.orders.find({
       where: { restaurantId },
       order: { createdAt: 'DESC' },

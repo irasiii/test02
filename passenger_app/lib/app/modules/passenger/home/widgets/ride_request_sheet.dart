@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:geny_app/app/core/errors/failures.dart';
 import 'package:geny_app/app/data/providers/providers.dart';
 import 'fare_estimate_dialog.dart';
 
@@ -46,7 +48,8 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
   }
 
   Future<void> _requestRide() async {
-    if (_destinationCtrl.text.trim().isEmpty) {
+    final destination = _destinationCtrl.text.trim();
+    if (destination.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a destination')),
       );
@@ -54,25 +57,35 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     }
     setState(() => _requesting = true);
     try {
-      // For demo purposes we send the destination text as the address and reuse
-      // current position as destination coordinates. In production we would
-      // forward-geocode the typed address first.
+      // Forward-geocode the typed destination address to real coordinates
+      // instead of faking them relative to the pickup position.
+      late final double destLat;
+      late final double destLng;
+      try {
+        final locations = await locationFromAddress(destination);
+        if (locations.isEmpty) throw const AppFailure('Could not find that destination.');
+        destLat = locations.first.latitude;
+        destLng = locations.first.longitude;
+      } catch (e) {
+        if (!mounted) return;
+        final msg = e is AppFailure ? e.message : 'Could not geocode the destination address.';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        return;
+      }
+
       final body = await ref.read(apiClientProvider).requestTrip({
         'pickupLat': widget.currentLat,
         'pickupLng': widget.currentLng,
         'pickupAddress': _pickupCtrl.text,
-        'destinationLat': widget.currentLat + 0.01,
-        'destinationLng': widget.currentLng + 0.01,
-        'destinationAddress': _destinationCtrl.text,
+        'destinationLat': destLat,
+        'destinationLng': destLng,
+        'destinationAddress': destination,
         'type': 'RIDE',
         'passengerCount': 1,
       });
       setState(() => _fareEstimate = body);
       final tripId = body['id'] as String?;
       if (tripId != null) {
-        // ignore: unused_local_variable
-        final fare = body['fareEstimate'];
-        // Show a confirmation dialog
         await showDialog<void>(
           context: context,
           builder: (_) => AlertDialog(
@@ -88,6 +101,10 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           ),
         );
         if (mounted) context.go('/passenger/rides');
+      }
+    } on AppFailure catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Request failed: ${e.message}')));
       }
     } catch (e) {
       if (mounted) {

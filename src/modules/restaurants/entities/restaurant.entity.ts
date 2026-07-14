@@ -1,5 +1,6 @@
-import { Column, Entity, Index, OneToMany } from 'typeorm';
+import { Column, Entity, Index, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../../app/common/entities/base.entity';
+import { User } from '../../users/entities/user.entity';
 import { Order } from '../../orders/entities/order.entity';
 import { MenuCategory } from '../../menu/entities/menu-category.entity';
 
@@ -11,6 +12,14 @@ export enum RestaurantStatus {
 
 @Entity('restaurants')
 export class Restaurant extends BaseEntity {
+  @Index()
+  @Column({ name: 'owner_id', nullable: true })
+  ownerId: string | null;
+
+  @ManyToOne(() => User, { eager: false, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'owner_id' })
+  owner: User;
+
   @Column({ unique: true })
   email: string;
 

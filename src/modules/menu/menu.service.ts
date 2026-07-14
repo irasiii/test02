@@ -9,17 +9,20 @@ import {
   CreateMenuItemDto,
   UpdateMenuItemDto,
 } from './dtos/create-menu-item.dto';
+import { RestaurantsService } from '../restaurants/restaurants.service';
 
 @Injectable()
 export class MenuService {
   constructor(
     @InjectRepository(MenuItem) private readonly items: Repository<MenuItem>,
     @InjectRepository(MenuCategory) private readonly categories: Repository<MenuCategory>,
+    private readonly restaurants: RestaurantsService,
   ) {}
 
   // Categories --------------------------------------------------------------
 
-  async createCategory(restaurantId: string, dto: CreateCategoryDto) {
+  async createCategory(restaurantId: string, dto: CreateCategoryDto, actor?: { id: string; isAdmin: boolean }) {
+    if (actor) await this.restaurants.assertOwned(restaurantId, actor.id, actor.isAdmin);
     const cat = this.categories.create({ ...dto, restaurantId });
     return this.categories.save(cat);
   }
@@ -32,14 +35,18 @@ export class MenuService {
     });
   }
 
-  async deleteCategory(id: string) {
+  async deleteCategory(id: string, actor?: { id: string; isAdmin: boolean }) {
+    const cat = await this.categories.findOne({ where: { id } });
+    if (!cat) throw new NotFoundException('Category not found');
+    if (actor) await this.restaurants.assertOwned(cat.restaurantId, actor.id, actor.isAdmin);
     await this.categories.softDelete(id);
     return { success: true };
   }
 
   // Items -------------------------------------------------------------------
 
-  async createItem(restaurantId: string, dto: CreateMenuItemDto) {
+  async createItem(restaurantId: string, dto: CreateMenuItemDto, actor?: { id: string; isAdmin: boolean }) {
+    if (actor) await this.restaurants.assertOwned(restaurantId, actor.id, actor.isAdmin);
     const cat = await this.categories.findOne({
       where: { id: dto.categoryId, restaurantId },
     });
@@ -59,12 +66,16 @@ export class MenuService {
     });
   }
 
-  async updateItem(id: string, dto: UpdateMenuItemDto) {
+  async updateItem(id: string, dto: UpdateMenuItemDto, actor?: { id: string; isAdmin: boolean }) {
+    const item = await this.findOne(id);
+    if (actor) await this.restaurants.assertOwned(item.restaurantId, actor.id, actor.isAdmin);
     await this.items.update(id, dto);
     return this.findOne(id);
   }
 
-  async deleteItem(id: string) {
+  async deleteItem(id: string, actor?: { id: string; isAdmin: boolean }) {
+    const item = await this.findOne(id);
+    if (actor) await this.restaurants.assertOwned(item.restaurantId, actor.id, actor.isAdmin);
     await this.items.softDelete(id);
     return { success: true };
   }
@@ -75,3 +86,4 @@ export class MenuService {
     return item;
   }
 }
+
