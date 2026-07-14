@@ -138,9 +138,11 @@ export class TripsService {
         if (!isDriverOfTrip) throw new ForbiddenException('Only driver can update arrival status');
         break;
       case TripStatus.STARTED:
+        if (!isDriverOfTrip) throw new ForbiddenException('Only the assigned driver can start the trip');
         trip.startedAt = new Date();
         break;
       case TripStatus.COMPLETED:
+        if (!isDriverOfTrip) throw new ForbiddenException('Only the assigned driver can complete the trip');
         trip.completedAt = new Date();
         // Compute final fare based on actual distance.
         const actual = await this.maps.distanceMatrix(

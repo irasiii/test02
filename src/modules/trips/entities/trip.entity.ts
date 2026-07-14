@@ -1,4 +1,4 @@
-import { Column, Entity, Index, ManyToOne } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { BaseEntity } from '../../../app/common/entities/base.entity';
 import { User } from '../../users/entities/user.entity';
 import { Driver } from '../../drivers/entities/driver.entity';
@@ -22,6 +22,7 @@ export enum TripType {
 @Entity('trips')
 export class Trip extends BaseEntity {
   @ManyToOne(() => User, (user) => user.trips, { eager: false })
+  @JoinColumn({ name: 'customer_id' })
   customer: User;
 
   @Index()
@@ -29,6 +30,7 @@ export class Trip extends BaseEntity {
   customerId: string;
 
   @ManyToOne(() => Driver, (driver) => driver.trips, { eager: false, nullable: true })
+  @JoinColumn({ name: 'driver_id' })
   driver: Driver | null;
 
   @Index()

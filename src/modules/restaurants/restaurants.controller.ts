@@ -38,12 +38,6 @@ export class RestaurantsController {
     return this.restaurants.findAll({ filter });
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Get one restaurant' })
-  get(@Param('id') id: string) {
-    return this.restaurants.findOne(id);
-  }
-
   @Get('me')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
@@ -51,6 +45,12 @@ export class RestaurantsController {
   @ApiOperation({ summary: 'Get the restaurant owned by the current user' })
   getMine(@CurrentUser() user: AuthUser) {
     return this.restaurants.findByOwner(user.id);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get one restaurant' })
+  get(@Param('id') id: string) {
+    return this.restaurants.findOne(id);
   }
 
   @Patch(':id')

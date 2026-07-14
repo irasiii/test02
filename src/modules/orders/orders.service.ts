@@ -86,7 +86,8 @@ export class OrdersService {
     const serviceFee = Number((subtotal * SERVICE_FEE_RATE).toFixed(2));
     const tax = Number((subtotal * TAX_RATE).toFixed(2));
     const total = Number((subtotal + deliveryFee + serviceFee + tax).toFixed(2));
-    const etaMinutes = (restaurant.estimatedPrepMinutes ?? 20) + Math.ceil((route?.durationSeconds ?? 1200) / 60);
+    // Note: numeric columns come back from Postgres as strings — coerce before adding.
+    const etaMinutes = Math.round(Number(restaurant.estimatedPrepMinutes ?? 20)) + Math.ceil((route?.durationSeconds ?? 1200) / 60);
 
     const order = this.orders.create({
       customerId,

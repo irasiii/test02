@@ -48,7 +48,7 @@ export class PaymentsService {
       description,
     });
     await this.payments.save(rec);
-    return { intentId: intent.id, clientSecret: intent.clientSecret, amount, currency: 'usd' };
+    return { paymentId: rec.id, intentId: intent.id, clientSecret: intent.clientSecret, amount, currency: 'usd' };
   }
 
   /** Admin: list all payments with the user relation, newest first. */

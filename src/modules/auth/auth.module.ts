@@ -22,6 +22,6 @@ import { Driver } from '../drivers/entities/driver.entity';
   ],
   controllers: [AuthController],
   providers: [AuthService],
-  exports: [AuthService, JwtModule],
+  exports: [AuthService, JwtModule, TypeOrmModule],
 })
 export class AuthModule {}

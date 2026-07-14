@@ -1,4 +1,4 @@
-import { Column, Entity, Index, ManyToOne } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { BaseEntity } from '../../../app/common/entities/base.entity';
 import { User } from '../../users/entities/user.entity';
 
@@ -12,6 +12,7 @@ export enum RatingTarget {
 @Entity('ratings')
 export class Rating extends BaseEntity {
   @ManyToOne(() => User, (user) => user.givenRatings)
+  @JoinColumn({ name: 'reviewer_id' })
   reviewer: User;
 
   @Index()

@@ -77,6 +77,6 @@ export class Restaurant extends BaseEntity {
   @OneToMany(() => Order, (order) => order.restaurant)
   orders: Order[];
 
-  @OneToMany(() => MenuCategory, (category) => category.restaurantId)
+  @OneToMany(() => MenuCategory, (category) => category.restaurant)
   menuCategories: MenuCategory[];
 }

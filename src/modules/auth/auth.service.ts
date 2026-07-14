@@ -43,6 +43,12 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const role = dto.role ?? Role.CUSTOMER;
 
+    // Prevent privilege escalation: ADMIN accounts must be provisioned by seed /
+    // another admin, never through public self-registration.
+    if (role === Role.ADMIN) {
+      throw new ForbiddenException('Cannot self-register as ADMIN');
+    }
+
     const user = this.users.create({
       email: dto.email,
       phone: dto.phone,

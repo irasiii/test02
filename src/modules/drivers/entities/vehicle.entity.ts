@@ -1,4 +1,4 @@
-import { Column, Entity, Index, ManyToOne } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { BaseEntity } from '../../../app/common/entities/base.entity';
 import { Driver } from './driver.entity';
 
@@ -15,6 +15,7 @@ export enum VehicleType {
 @Entity('vehicles')
 export class Vehicle extends BaseEntity {
   @ManyToOne(() => Driver, (driver) => driver.vehicles, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'driver_id' })
   driver: Driver;
 
   @Index()

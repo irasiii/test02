@@ -112,6 +112,22 @@ describe('AuthService', () => {
         } as any),
       ).rejects.toThrow(/already registered/i);
     });
+
+    it('rejects self-registration as ADMIN (privilege escalation guard)', async () => {
+      usersRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.register({
+          email: 'evil@example.com',
+          phone: '+3333333333',
+          firstName: 'E',
+          lastName: 'V',
+          password: 'pass123',
+          role: Role.ADMIN,
+        } as any),
+      ).rejects.toThrow(/admin/i);
+      expect(usersRepo.save).not.toHaveBeenCalled();
+    });
   });
 
   describe('login', () => {

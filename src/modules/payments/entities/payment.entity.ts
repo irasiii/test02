@@ -1,4 +1,4 @@
-import { Column, Entity, Index, ManyToOne } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { BaseEntity } from '../../../app/common/entities/base.entity';
 import { User } from '../../users/entities/user.entity';
 
@@ -21,6 +21,7 @@ export enum PaymentPurpose {
 @Entity('payments')
 export class Payment extends BaseEntity {
   @ManyToOne(() => User, (user) => user.payments)
+  @JoinColumn({ name: 'user_id' })
   user: User;
 
   @Index()

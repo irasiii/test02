@@ -1,4 +1,4 @@
-import { Column, Entity, Index, ManyToOne, OneToMany } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
 import { BaseEntity } from '../../../app/common/entities/base.entity';
 import { Restaurant } from '../../restaurants/entities/restaurant.entity';
 import { MenuItem } from './menu-item.entity';
@@ -10,6 +10,7 @@ export class MenuCategory extends BaseEntity {
   restaurantId: string;
 
   @ManyToOne(() => Restaurant, (restaurant) => restaurant.menuCategories, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'restaurant_id' })
   restaurant: Restaurant;
 
   @Column()

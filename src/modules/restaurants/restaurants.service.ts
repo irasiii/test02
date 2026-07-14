@@ -24,7 +24,7 @@ export class RestaurantsService {
   }
 
   async findAll(opts: { filter?: string } = {}) {
-    const qb = this.restaurants.createQueryBuilder('r').where('r.is_active = :active', {
+    const qb = this.restaurants.createQueryBuilder('r').where('r.isActive = :active', {
       active: true,
     });
     if (opts.filter) {

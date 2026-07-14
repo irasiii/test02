@@ -1,4 +1,4 @@
-import { Column, Entity, Index, ManyToOne } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { BaseEntity } from '../../../app/common/entities/base.entity';
 import { User } from '../../users/entities/user.entity';
 import { Driver } from '../../drivers/entities/driver.entity';
@@ -28,6 +28,7 @@ export enum OrderStatus {
 @Entity('orders')
 export class Order extends BaseEntity {
   @ManyToOne(() => User, (user) => user.orders, { eager: false })
+  @JoinColumn({ name: 'customer_id' })
   customer: User;
 
   @Index()
@@ -35,6 +36,7 @@ export class Order extends BaseEntity {
   customerId: string;
 
   @ManyToOne(() => Restaurant, (restaurant) => restaurant.orders, { eager: false })
+  @JoinColumn({ name: 'restaurant_id' })
   restaurant: Restaurant;
 
   @Index()
@@ -42,6 +44,7 @@ export class Order extends BaseEntity {
   restaurantId: string;
 
   @ManyToOne(() => Driver, (driver) => driver.orders, { eager: false, nullable: true })
+  @JoinColumn({ name: 'driver_id' })
   driver: Driver | null;
 
   @Index()
@@ -119,12 +122,14 @@ export class OrderItem extends BaseEntity {
   orderId: string;
 
   @ManyToOne(() => Order, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'order_id' })
   order: Order;
 
   @Column({ name: 'menu_item_id' })
   menuItemId: string;
 
   @ManyToOne(() => MenuItem, { eager: true })
+  @JoinColumn({ name: 'menu_item_id' })
   menuItem: MenuItem;
 
   @Column({ type: 'int', default: 1, name: 'quantity' })

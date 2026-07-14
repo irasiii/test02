@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNumber, Max, Min } from 'class-validator';
+import { IsNumber, IsOptional, Max, Min } from 'class-validator';
 
 export class UpdateLocationDto {
   @ApiProperty({ example: 24.7136 })
@@ -15,11 +15,13 @@ export class UpdateLocationDto {
   lng: number;
 
   @ApiProperty({ required: false, example: 12 })
+  @IsOptional()
   @IsNumber()
   @Min(0)
   speedKmh?: number;
 
   @ApiProperty({ required: false, example: 90 })
+  @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(360)

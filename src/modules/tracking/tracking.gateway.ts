@@ -11,6 +11,9 @@ import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { RedisService } from '../../infra/redis/redis.service';
 import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Driver } from '../drivers/entities/driver.entity';
 import { ConfigService } from '@nestjs/config';
 
 /**
@@ -41,6 +44,8 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly redis: RedisService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    @InjectRepository(Driver)
+    private readonly driversRepo: Repository<Driver>,
   ) {}
 
   async handleConnection(socket: Socket) {
@@ -100,7 +105,16 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
     const userId = (socket as any).userId;
     if (!userId) return { ok: false, error: 'unauthenticated' };
 
-    await this.redis.addGeo('drivers:geo', payload.lng, payload.lat, `user:${userId}`);
+    // Resolve driver.id once per socket so the GEO member matches what the REST
+    // ping endpoint stores (driver ids) — mixed member formats break nearby().
+    let driverId = (socket as any).driverId as string | undefined;
+    if (!driverId) {
+      const driver = await this.driversRepo.findOne({ where: { userId } });
+      if (!driver) return { ok: false, error: 'no driver profile' };
+      driverId = driver.id;
+      (socket as any).driverId = driverId;
+    }
+    await this.redis.addGeo('drivers:geo', payload.lng, payload.lat, driverId);
     this.server.emit(`driver:${userId}`, payload);
 
     if (payload.tripId) {
