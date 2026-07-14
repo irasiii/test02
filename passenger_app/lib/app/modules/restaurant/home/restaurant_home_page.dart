@@ -208,17 +208,33 @@ class _MenuTab extends ConsumerWidget {
     final categories = state.categories;
 
     if (items.isEmpty) {
+      final noCategories = categories.isEmpty;
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text('Your menu is empty.'),
             const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: () => _showAddItem(context, ref),
-              icon: const Icon(Icons.add),
-              label: const Text('Add item'),
-            ),
+            if (noCategories)
+              ElevatedButton.icon(
+                onPressed: () => _showAddCategory(context, ref),
+                icon: const Icon(Icons.add),
+                label: const Text('Add category'),
+              )
+            else
+              ElevatedButton.icon(
+                onPressed: () => _showAddItem(context, ref),
+                icon: const Icon(Icons.add),
+                label: const Text('Add item'),
+              ),
+            if (!noCategories) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () => _showAddCategory(context, ref),
+                icon: const Icon(Icons.add_circle_outline),
+                label: const Text('Add another category'),
+              ),
+            ],
           ],
         ),
       );
@@ -228,10 +244,17 @@ class _MenuTab extends ConsumerWidget {
       children: [
         ListView.separated(
           padding: const EdgeInsets.all(12),
-          itemCount: items.length,
+          itemCount: items.length + 1,
           separatorBuilder: (_, __) => const Divider(),
           itemBuilder: (context, i) {
-            final item = Map<String, dynamic>.from(items[i] as Map);
+            if (i == 0) {
+              return ListTile(
+                leading: const Icon(Icons.add_circle, color: Colors.deepOrange),
+                title: const Text('Add category'),
+                onTap: () => _showAddCategory(context, ref),
+              );
+            }
+            final item = Map<String, dynamic>.from(items[i - 1] as Map);
             final available = (item['isAvailable'] as bool?) == true;
             final categoryId = item['categoryId'] as String?;
             final categoryName = categories.firstWhere(
@@ -277,6 +300,43 @@ class _MenuTab extends ConsumerWidget {
     );
   }
 
+  Future<void> _showAddCategory(BuildContext context, WidgetRef ref) async {
+    final nameCtrl = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add category'),
+        content: TextField(
+          controller: nameCtrl,
+          decoration: const InputDecoration(labelText: 'Category name'),
+          textCapitalization: TextCapitalization.words,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              if (name.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Category name is required')),
+                );
+                return;
+              }
+              final ok = await ref.read(restaurantControllerProvider.notifier).addCategory(name);
+              if (context.mounted) Navigator.pop(ctx);
+              if (!ok && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Failed to add category')),
+                );
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showAddItem(BuildContext context, WidgetRef ref) async {
     final categories = ref.read(restaurantControllerProvider).categories;
     final nameCtrl = TextEditingController();
@@ -293,7 +353,7 @@ class _MenuTab extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (categories.isEmpty)
-                const Text('Create a category first (coming soon).',
+                const Text('Add a category first using "Add category" above.',
                     style: TextStyle(color: Colors.black54)),
               if (categories.isNotEmpty)
                 DropdownButtonFormField<String>(
