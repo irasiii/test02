@@ -74,7 +74,7 @@ Base URL: `http://localhost:3000/api/v1` — Swagger: `http://localhost:3000/doc
 | PATCH | `/trips/:id/status` | Flow: DRIVER_ARRIVING → DRIVER_ARRIVED → STARTED → COMPLETED |
 | PATCH | `/orders/:id/status` | Flow: PICKED_UP → ON_THE_WAY → DELIVERED (only if assigned) |
 
-### Restaurants (restaurant web portal)
+### Restaurants (Flutter restaurant console or API)
 | Method | Path | Body |
 |---|---|---|
 | POST   | `/restaurants` | Register |
@@ -198,6 +198,129 @@ Use TypeORM migrations in production (disable `DB_SYNC`):
 npm run migration:generate
 npm run migration:run
 ```
+
+## Using the app — step by step
+
+The repo is a monorepo: a **NestJS backend**, a **Flutter mobile app** (serves
+Customers, Drivers, and Restaurant partners from one codebase via role-based
+routing), and a **React admin dashboard**. Follow the steps below to run the
+whole thing locally and exercise every role.
+
+### 0. Prerequisites
+
+- Node 18+
+- Flutter 3.13+ and an emulator/simulator (or physical device)
+- PostgreSQL 14+ and Redis 6+ — easiest via Docker:
+
+  ```bash
+  docker compose up -d          # starts postgres + redis from docker-compose.yml
+  ```
+
+  (Bring your own Postgres/Redis and edit `.env` if you prefer.)
+
+### 1. Start the backend
+
+```bash
+npm install
+cp .env.example .env           # if you don't already have a .env
+npm run start:dev              # or: npm run build && npm run start:prod
+```
+
+- Listens on `http://localhost:3000` (Swagger at `http://localhost:3000/docs`).
+- No real API keys needed for a local demo: with `GOOGLE_MAPS_API_KEY` blank the
+  distance/fare uses a haversine fallback, and `STRIPE_SECRET_KEY=sk_test_xxx`
+  makes the payment service return mock intents. Set real keys in `.env` for
+  production-like behavior.
+
+### 2. Seed demo accounts
+
+```bash
+npm run seed
+```
+
+Creates four accounts (password **`P@ssw0rd`** for all):
+
+| Role        | Email              |
+|-------------|--------------------|
+| Admin       | admin@geny.app     |
+| Customer    | customer@geny.app  |
+| Driver      | driver@geny.app    |
+| Restaurant  | burgers@geny.app   |
+
+`burgers@geny.app` owns the seeded "GenY Burger House" and its menu.
+
+### 3. Run the mobile app
+
+```bash
+cd passenger_app
+flutter pub get
+flutter run                 # choose an emulator / device / simulator
+```
+
+- The API URL defaults to `http://10.0.2.2:3000/api/v1` (Android emulator).
+  For an **iOS simulator** use localhost, and for a **physical device** use your
+  machine's LAN IP. Override with:
+
+  ```bash
+  flutter run --dart-define=API_BASE_URL=http://localhost:3000/api/v1
+  flutter run --dart-define=API_BASE_URL=http://192.168.x.x:3000/api/v1
+  ```
+
+- After login, the app routes you to the correct home by your role
+  (Customer → passenger, Driver → driver, Restaurant → restaurant console).
+
+### 4. Walk through each role
+
+**Customer (passenger)**
+1. Log in as `customer@geny.app`.
+2. Request a ride (pickup + destination) → see a fare estimate → place the trip.
+3. Food: browse restaurants → open a menu → add items → **Checkout** (mock Stripe
+   PaymentIntent) → track the order.
+4. View ride/order history and your profile from the bottom nav.
+
+**Driver**
+1. Log in as `driver@geny.app`.
+2. Tap **Go online** — the app pings your location every 10s and subscribes to
+   live offers over WebSocket.
+3. Accept an incoming trip offer; advance status
+   `DRIVER_ARRIVING → DRIVER_ARRIVED → STARTED → COMPLETED`.
+4. Food deliveries: when a restaurant marks an order `READY`, a delivery offer
+   arrives; advance `PICKED_UP → ON_THE_WAY → DELIVERED`.
+
+**Restaurant partner**
+1. Log in as `burgers@geny.app` (RESTAURANT role) — the app opens the
+   restaurant console.
+2. **Orders** tab: see incoming orders and **Accept / Reject / Mark Preparing /
+   Mark Ready**. Marking an order `READY` auto-assigns the nearest available
+   FOOD driver.
+3. **Menu** tab: **Add category**, **Add item** (name, price, description),
+   toggle item availability, and delete items.
+
+**Admin (web dashboard)**
+1. ```bash
+   cd admin_dashboard
+   npm install
+   npm run dev                 # opens http://localhost:5173
+   ```
+   Vite proxies `/api` → `http://localhost:3000`, so no extra config is needed.
+2. Log in with `admin@geny.app` / `P@ssw0rd`.
+3. Browse **Trips**, **Orders**, **Payments**, and **Ratings** across all users.
+
+### 5. (Optional) Automated smoke test
+
+With the backend running and infrastructure up (Docker), validate the API:
+
+```bash
+npm run smoke                 # node scripts/smoke-test.mjs
+```
+
+### Notes
+
+- Live tracking uses the WebSocket at `ws://localhost:3000/tracking`; the Flutter
+  app defaults to `ws://10.0.2.2:3000/tracking` (override with
+  `--dart-define=WS_BASE_URL=...`).
+- `DB_SYNC=true` auto-creates tables for the MVP. For production, disable it and
+  use `npm run migration:generate` / `npm run migration:run`.
 
 ## Tech stack summary
 
