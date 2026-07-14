@@ -71,6 +71,33 @@ class ApiClient {
     return _asList(r);
   }
   Future<Map<String, dynamic>> getRestaurant(String id) async => _asMap(await _unwrap(() => _dio.get('/restaurants/$id')));
+
+  /// The restaurant owned by the currently authenticated RESTAURANT user.
+  Future<Map<String, dynamic>> getMyRestaurant() async =>
+      _asMap(await _unwrap(() => _dio.get('/restaurants/me')));
+
+  /// Orders routed to a specific restaurant (owner or admin).
+  Future<List<dynamic>> listRestaurantOrders(String restaurantId) async {
+    final r = await _unwrap(() => _dio.get('/orders/restaurant/$restaurantId'));
+    return _asList(r);
+  }
+
+  // ===== Menu management (restaurant owner) =====
+  Future<Map<String, dynamic>> createCategory(String restaurantId, Map<String, dynamic> body) =>
+      _unwrapMap(() => _dio.post('/restaurants/$restaurantId/categories', data: body));
+
+  Future<void> deleteCategory(String restaurantId, String id) =>
+      _unwrap(() => _dio.delete('/restaurants/$restaurantId/categories/$id'));
+
+  Future<Map<String, dynamic>> createMenuItem(String restaurantId, Map<String, dynamic> body) =>
+      _unwrapMap(() => _dio.post('/restaurants/$restaurantId/items', data: body));
+
+  Future<Map<String, dynamic>> updateMenuItem(String restaurantId, String id, Map<String, dynamic> body) =>
+      _unwrapMap(() => _dio.patch('/restaurants/$restaurantId/items/$id', data: body));
+
+  Future<void> deleteMenuItem(String restaurantId, String id) =>
+      _unwrap(() => _dio.delete('/restaurants/$restaurantId/items/$id'));
+
   Future<List<dynamic>> listMenuCategories(String restaurantId) async {
     final r = await _unwrap(() => _dio.get('/restaurants/$restaurantId/categories'));
     return _asList(r);

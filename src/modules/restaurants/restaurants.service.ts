@@ -40,6 +40,12 @@ export class RestaurantsService {
     return r;
   }
 
+  async findByOwner(ownerId: string) {
+    const r = await this.restaurants.findOne({ where: { ownerId } });
+    if (!r) throw new NotFoundException('No restaurant found for this owner');
+    return r;
+  }
+
   /** Asserts the actor owns the restaurant (admin bypasses). */
   async assertOwned(id: string, actorId: string, isAdmin: boolean) {
     const r = await this.findOne(id);

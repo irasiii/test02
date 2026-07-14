@@ -156,4 +156,18 @@ describe('RestaurantsService', () => {
       expect(res.status).toBe(RestaurantStatus.CLOSED);
     });
   });
+
+  describe('findByOwner', () => {
+    it('returns the restaurant owned by the given user', async () => {
+      restaurantsRepo.findOne.mockResolvedValue(mockRestaurant({ ownerId: 'u-owner-1' }));
+      const res = await service.findByOwner('u-owner-1');
+      expect(restaurantsRepo.findOne).toHaveBeenCalledWith({ where: { ownerId: 'u-owner-1' } });
+      expect(res.id).toBe('rest-1');
+    });
+
+    it('throws NotFoundException when the owner has no restaurant', async () => {
+      restaurantsRepo.findOne.mockResolvedValue(null);
+      await expect(service.findByOwner('u-no-restaurant')).rejects.toThrow(/no restaurant/i);
+    });
+  });
 });

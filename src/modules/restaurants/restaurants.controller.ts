@@ -44,6 +44,15 @@ export class RestaurantsController {
     return this.restaurants.findOne(id);
   }
 
+  @Get('me')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Roles(Role.RESTAURANT, Role.ADMIN)
+  @ApiOperation({ summary: 'Get the restaurant owned by the current user' })
+  getMine(@CurrentUser() user: AuthUser) {
+    return this.restaurants.findByOwner(user.id);
+  }
+
   @Patch(':id')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
