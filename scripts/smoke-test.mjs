@@ -71,7 +71,7 @@ async function main() {
   {
     const email = `smoke_${Date.now()}@geny.app`;
     const reg = await call('POST', '/auth/register', {
-      body: { email, phone: '+10000000000', firstName: 'Smoke', lastName: 'Test', password: 'P@ssw0rd', role: 'CUSTOMER' },
+      body: { email, phone: `+1${String(Date.now()).slice(-10)}`, firstName: 'Smoke', lastName: 'Test', password: 'P@ssw0rd', role: 'CUSTOMER' },
       expectStatus: 201,
     });
     record('customer register', reg.ok, `status ${reg.status}`);
