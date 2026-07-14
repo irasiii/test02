@@ -1,0 +1,20 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.local
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+# Secrets — never commit the local token file
+test02
+
+# Flutter build artifacts
+passenger_app/build/
+passenger_app/.dart_tool/
+passenger_app/.flutter-plugins
+passenger_app/.flutter-plugins-dependencies
+*.iml
+
